@@ -1,0 +1,28 @@
+{
+  "$comment": "Loyverse product -> WiFi voucher mapping. Only these products trigger a WiFi code print.",
+  "products": [
+    {
+      "item_id": "ca87df6b-24ef-4962-a954-59a551adc1c6",
+      "item_name": "Wifi 30 min",
+      "duration_minutes": 30,
+      "devices": 1
+    },
+    {
+      "item_id": "91b96f9c-7079-4e1f-899f-546016972a83",
+      "item_name": "Working in cafe",
+      "duration_minutes": 120,
+      "devices": 1
+    },
+    {
+      "item_id": "32e96796-851b-4e94-9006-30a54104c2c7",
+      "item_name": "High season space B",
+      "duration_minutes": 720,
+      "devices": 2
+    }
+  ],
+  "defaults": {
+    "ssid": "fika",
+    "category_id": "0499703c-4f8f-4b3d-a956-eafa9ec0d692",
+    "category_name": "Services"
+  }
+}

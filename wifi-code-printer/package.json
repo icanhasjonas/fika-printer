@@ -1,0 +1,14 @@
+{
+  "name": "wifi-code-printer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run index.ts",
+    "build-logo": "bun run build-logo.ts"
+  },
+  "dependencies": {
+    "@date-fns/tz": "^1.4.1",
+    "date-fns": "^4.1.0"
+  }
+}

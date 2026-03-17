@@ -1,0 +1,23 @@
+name = "loyverse-integration"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+# account_id = "" # Set via CLOUDFLARE_ACCOUNT_ID env or wrangler login
+
+routes = [
+  { pattern = "loyverse-integration.lanta-fika.com", custom_domain = true }
+]
+
+# Workers.dev also enabled for testing
+workers_dev = true
+
+[durable_objects]
+bindings = [
+  { name = "PRINT_QUEUE", class_name = "PrintQueue" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["PrintQueue"]
+
+[vars]
+ENVIRONMENT = "production"
