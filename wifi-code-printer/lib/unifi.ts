@@ -1,7 +1,8 @@
 /**
- * UniFi voucher management via API
+ * UniFi voucher + guest + RADIUS management
  *
- * Uses the classic UniFi API (not the integration API) for hotspot vouchers.
+ * Uses the official v1 Integration API for vouchers (single-call create with code returned).
+ * Falls back to classic API for guest/RADIUS management (not in v1 yet).
  * Auth: API key via X-API-KEY header.
  */
 
@@ -11,18 +12,29 @@ export interface UnifiConfig {
   site: string;
 }
 
+// v1 site UUID - resolved on first use
+let v1SiteId: string | null = null;
+
 export interface Voucher {
-  _id: string;
+  id: string;
   code: string;
-  create_time: number;
-  duration: number;
-  quota: number;
-  used: number;
+  name?: string;
+  createdAt?: string;
+  timeLimitMinutes?: number;
+  authorizedGuestLimit?: number;
+  authorizedGuestCount?: number;
+  expired?: boolean;
+  // Classic API fields (kept for compat)
+  _id?: string;
+  create_time?: number;
+  duration?: number;
+  quota?: number;
+  used?: number;
   note?: string;
-  status: string;
-  status_expires: number;
+  status?: string;
 }
 
+// Classic API (for guest mgmt, RADIUS, etc.)
 async function unifiRequest(config: UnifiConfig, path: string, body?: unknown): Promise<unknown> {
   const url = `${config.host}/proxy/network/api/s/${config.site}${path}`;
   const res = await fetch(url, {
@@ -49,61 +61,82 @@ async function unifiRequest(config: UnifiConfig, path: string, body?: unknown): 
   return json.data;
 }
 
+// v1 Integration API (for vouchers)
+async function getV1SiteId(config: UnifiConfig): Promise<string> {
+  if (v1SiteId) return v1SiteId;
+  const url = `${config.host}/proxy/network/integrations/v1/sites`;
+  const res = await fetch(url, {
+    headers: { "X-API-KEY": config.apiKey },
+    // @ts-ignore
+    tls: { rejectUnauthorized: false },
+  });
+  if (!res.ok) throw new Error(`v1 API sites: ${res.status}`);
+  const json = (await res.json()) as { data: { id: string; name: string }[] };
+  const site = json.data.find((s) => s.name === "Default") ?? json.data[0];
+  if (!site) throw new Error("No sites found in v1 API");
+  v1SiteId = site.id;
+  console.log(`[unifi] v1 site ID: ${v1SiteId}`);
+  return v1SiteId;
+}
+
+async function v1Request(config: UnifiConfig, method: string, path: string, body?: unknown): Promise<unknown> {
+  const siteId = await getV1SiteId(config);
+  const url = `${config.host}/proxy/network/integrations/v1/sites/${siteId}${path}`;
+  const res = await fetch(url, {
+    method,
+    headers: {
+      "X-API-KEY": config.apiKey,
+      "Content-Type": "application/json",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    // @ts-ignore
+    tls: { rejectUnauthorized: false },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`UniFi v1 API ${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
 /**
- * Create a single-use WiFi voucher
- * @returns The voucher code (formatted as XXXXX-XXXXX)
+ * Create a single-use WiFi voucher via v1 API
+ * Returns the voucher code directly (no second fetch needed).
  */
 export async function createVoucher(
   config: UnifiConfig,
-  durationHours: number,
+  durationMinutes: number,
   quota = 1,
   note?: string,
-): Promise<string> {
-  const uniqueNote = note
-    ? `${note} [${crypto.randomUUID().slice(0, 8)}]`
-    : `FIKA WiFi - ${new Date().toISOString()} [${crypto.randomUUID().slice(0, 8)}]`;
+): Promise<{ code: string; id: string }> {
+  const result = (await v1Request(config, "POST", "/hotspot/vouchers", {
+    name: note ?? `FIKA WiFi - ${new Date().toISOString()}`,
+    timeLimitMinutes: durationMinutes,
+    count: 1,
+    authorizedGuestLimit: quota,
+  })) as { vouchers: { id: string; code: string; timeLimitMinutes: number }[] };
 
-  const data = (await unifiRequest(config, "/cmd/hotspot", {
-    cmd: "create-voucher",
-    n: 1,
-    expire: durationHours * 60, // API expects minutes
-    quota,
-    note: uniqueNote,
-  })) as { create_time: number }[];
-
-  if (!data || !data[0]) {
-    throw new Error("No voucher returned from UniFi");
+  if (!result.vouchers?.[0]) {
+    throw new Error("No voucher returned from UniFi v1 API");
   }
 
-  // Fetch the created voucher to get the code
-  // Match on both create_time AND unique note to avoid race conditions
-  const createTime = data[0].create_time;
-  const vouchers = (await listVouchers(config)) as Voucher[];
-  const match = vouchers.find((v) => v.create_time === createTime && v.note === uniqueNote)
-    ?? vouchers.find((v) => v.create_time === createTime);
-
-  if (!match) {
-    throw new Error("Created voucher but could not find it in voucher list");
-  }
-
-  return formatVoucherCode(match.code);
+  const v = result.vouchers[0];
+  return { code: formatVoucherCode(v.code), id: v.id };
 }
 
 /**
- * List all vouchers
+ * List vouchers via v1 API
  */
 export async function listVouchers(config: UnifiConfig): Promise<Voucher[]> {
-  return (await unifiRequest(config, "/stat/voucher")) as Voucher[];
+  const result = (await v1Request(config, "GET", "/hotspot/vouchers?limit=200")) as { data: Voucher[] };
+  return result.data ?? [];
 }
 
 /**
- * Delete a voucher
+ * Delete a voucher via v1 API
  */
 export async function deleteVoucher(config: UnifiConfig, voucherId: string): Promise<void> {
-  await unifiRequest(config, "/cmd/hotspot", {
-    cmd: "delete-voucher",
-    _id: voucherId,
-  });
+  await v1Request(config, "DELETE", `/hotspot/vouchers/${voucherId}`);
 }
 
 /**

@@ -174,11 +174,14 @@ function renderUsers() {
 
   list.innerHTML = users.map(u => {
     const expired = isExpired(u);
+    const eid = esc(u.id);
+    const ename = esc(u.name);
+    const eexp = esc(u.expires || '');
 
-    return '<div class="user-card">' +
+    return '<div class="user-card" data-id="' + eid + '" data-name="' + ename + '" data-expires="' + eexp + '">' +
       '<div class="user-header">' +
         '<span>' +
-          '<span class="user-name">' + esc(u.name) + '</span> ' +
+          '<span class="user-name">' + ename + '</span> ' +
           (expired ? '<span class="badge expired">expired</span>' : '<span class="badge active">active</span>') +
         '</span>' +
       '</div>' +
@@ -187,14 +190,26 @@ function renderUsers() {
         (u.expires ? ' - Expires: ' + u.expires : ' - No expiration') +
       '</div>' +
       '<div class="user-actions">' +
-        '<button class="btn sm" onclick="printCard(\'' + esc(u.name) + '\', \'' + (u.expires || '') + '\')">Print card</button>' +
-        (expired
-          ? '<button class="btn sm" onclick="renewUser(\'' + u.id + '\')">Renew 30d</button>'
-          : '') +
-        '<button class="btn sm danger" onclick="deleteUser(\'' + u.id + '\', \'' + esc(u.name) + '\')">Delete</button>' +
+        '<button class="btn sm" data-action="print">Print card</button>' +
+        (expired ? '<button class="btn sm" data-action="renew">Renew 30d</button>' : '') +
+        '<button class="btn sm danger" data-action="delete">Delete</button>' +
       '</div>' +
     '</div>';
   }).join('');
+
+  // Event delegation
+  list.querySelectorAll('[data-action]').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const card = this.closest('.user-card');
+      const id = card.dataset.id;
+      const name = card.dataset.name;
+      const expires = card.dataset.expires;
+      const action = this.dataset.action;
+      if (action === 'print') printCard(name, expires);
+      else if (action === 'renew') renewUser(id);
+      else if (action === 'delete') deleteUser(id, name);
+    });
+  });
 }
 
 async function createUser() {

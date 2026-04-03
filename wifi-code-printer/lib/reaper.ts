@@ -59,8 +59,9 @@ export class Reaper {
       const vouchers = await listVouchers(this.config.unifi);
       const graceMs = this.config.graceMinutes * 60_000;
       const expired = vouchers.filter((v) => {
-        if (!v.note) return false;
-        const closes = parseClosingNote(v.note, this.config.timezone);
+        const noteField = v.name ?? v.note ?? "";
+        if (!noteField) return false;
+        const closes = parseClosingNote(noteField, this.config.timezone);
         return closes !== null && now.getTime() >= closes.getTime() + graceMs;
       });
 
@@ -94,11 +95,13 @@ export class Reaper {
 
   private async reapVoucher(voucher: Voucher, guests: { _id: string; mac: string; voucher_id?: string }[]): Promise<void> {
     const code = voucher.code;
-    const closes = parseClosingNote(voucher.note ?? "");
+    const noteField = voucher.name ?? voucher.note ?? "";
+    const closes = parseClosingNote(noteField);
     console.log(`[reaper] Reaping voucher ${code} (closes: ${closes?.toISOString() ?? "?"})`);
 
-    // Find guest sessions using this voucher
-    const sessions = guests.filter((g) => g.voucher_id === voucher._id);
+    // Find guest sessions using this voucher (match on both v1 id and classic _id)
+    const voucherId = voucher.id ?? voucher._id;
+    const sessions = guests.filter((g) => g.voucher_id === voucherId);
 
     for (const session of sessions) {
       try {
@@ -112,7 +115,8 @@ export class Reaper {
 
     // Delete the voucher
     try {
-      await deleteVoucher(this.config.unifi, voucher._id);
+      const vId = voucher.id ?? voucher._id ?? "";
+      await deleteVoucher(this.config.unifi, vId);
       console.log(`[reaper]   Deleted voucher ${code} (${sessions.length} session(s) terminated)`);
     } catch (err) {
       console.error(`[reaper]   Failed to delete voucher ${code}: ${err instanceof Error ? err.message : err}`);

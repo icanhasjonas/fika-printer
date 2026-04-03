@@ -143,15 +143,16 @@ async function handlePrintJob(opts?: {
       return { ok: true, voucher_code: fakeCode, ssid: config.ssid, method: "dry-run", duration_minutes: durationMinutes, valid_until: validUntil };
     }
 
-    // 1. Create UniFi voucher
+    // 1. Create UniFi voucher via v1 API
     console.log(`[print] Creating voucher (${durationMinutes}min, ${devices} devices, ${validUntil ? `until ${validUntil}` : "no expire"})...`);
-    const voucherCode = await createVoucher(
+    const voucher = await createVoucher(
       config.unifi,
-      durationHours,
+      durationMinutes,
       devices,
       voucherNote,
     );
-    console.log(`[print] Voucher: ${voucherCode}`);
+    const voucherCode = voucher.code;
+    console.log(`[print] Voucher: ${voucherCode} (id: ${voucher.id})`);
 
     // 2. Build + print receipt (unless skip_print)
     if (opts?.skipPrint) {
