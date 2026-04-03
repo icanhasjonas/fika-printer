@@ -1,5 +1,5 @@
 name: "WiFi Code Printer"
-version: "0.5.2"
+version: "0.5.3"
 slug: wifi-code-printer
 description: "Generate WiFi vouchers and print receipts for FIKA Bakery"
 url: "https://brain.frst.dev/projects/wifi-code-printer/"
