@@ -308,11 +308,15 @@ export function renderDashboard(ssid: string, closingTime?: string): string {
         <label>Quantity</label>
         <input type="number" id="customQty" value="1" min="1" max="20">
       </div>
-      <div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:4px">
-        <span style="font-size:0.7em;color:var(--dim)">Custom = no auto-expire</span>
+      <div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:2px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.85em;text-transform:none;letter-spacing:0">
+          <input type="checkbox" id="doPrint" checked style="width:auto;accent-color:var(--accent)">
+          Print receipt
+        </label>
       </div>
     </div>
-    <button class="custom-print-btn" onclick="generateCustom()">Print WiFi Code(s)</button>
+    <div style="font-size:0.65em;color:var(--dim);margin-bottom:10px">Custom = no auto-expire</div>
+    <button class="custom-print-btn" onclick="generateCustom()">Generate WiFi Code(s)</button>
   </div>
 </div>
 
@@ -340,14 +344,15 @@ function generateCustom() {
   const unit = parseInt(document.getElementById('customUnit').value) || 1;
   const devices = parseInt(document.getElementById('customDevices').value) || 1;
   const qty = parseInt(document.getElementById('customQty').value) || 1;
-  generateBatch(dur * unit, devices, qty, true);
+  const doPrint = document.getElementById('doPrint').checked;
+  generateBatch(dur * unit, devices, qty, true, !doPrint);
 }
 
 async function generate(minutes, devices) {
-  return generateBatch(minutes, devices, 1, false);
+  return generateBatch(minutes, devices, 1, false, false);
 }
 
-async function generateBatch(minutes, devices, qty, noExpire) {
+async function generateBatch(minutes, devices, qty, noExpire, skipPrint) {
   const note = document.getElementById('note').value.trim();
   const result = document.getElementById('result');
   const total = qty;
@@ -356,20 +361,20 @@ async function generateBatch(minutes, devices, qty, noExpire) {
   let errors = 0;
 
   result.className = 'result loading';
-  result.innerHTML = '<div class="code">...</div><div class="info">' + (total > 1 ? 'Printing ' + total + ' vouchers...' : 'Generating voucher + printing...') + '</div>';
+  result.innerHTML = '<div class="code">...</div><div class="info">' + (total > 1 ? (skipPrint ? 'Generating ' : 'Printing ') + total + ' vouchers...' : (skipPrint ? 'Generating voucher...' : 'Generating voucher + printing...')) + '</div>';
 
   document.querySelectorAll('.preset-btn, .custom-print-btn').forEach(b => b.disabled = true);
 
   for (let i = 0; i < total; i++) {
     try {
       if (total > 1) {
-        result.innerHTML = '<div class="code">' + (i + 1) + ' / ' + total + '</div><div class="info">Printing...</div>';
+        result.innerHTML = '<div class="code">' + (i + 1) + ' / ' + total + '</div><div class="info">' + (skipPrint ? 'Generating...' : 'Printing...') + '</div>';
       }
 
       const resp = await fetch('/print', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ duration_minutes: minutes, devices, note: note || undefined, no_expire: noExpire || undefined }),
+        body: JSON.stringify({ duration_minutes: minutes, devices, note: note || undefined, no_expire: noExpire || undefined, skip_print: skipPrint || undefined }),
       });
       const data = await resp.json();
 

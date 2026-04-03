@@ -95,6 +95,7 @@ async function handlePrintJob(opts?: {
   receiptId?: string;
   note?: string;
   noExpire?: boolean;
+  skipPrint?: boolean;
 }): Promise<{ ok: true; voucher_code: string; ssid: string; method: string; duration_minutes: number; valid_until?: string } | { ok: false; error: string }> {
   // Accept minutes (preferred) or hours (legacy), default from config
   const durationMinutes = opts?.durationMinutes ?? (opts?.durationHours ? opts.durationHours * 60 : config.voucherDurationHours * 60);
@@ -150,7 +151,12 @@ async function handlePrintJob(opts?: {
     );
     console.log(`[print] Voucher: ${voucherCode}`);
 
-    // 2. Build receipt
+    // 2. Build + print receipt (unless skip_print)
+    if (opts?.skipPrint) {
+      console.log(`[print] Skip print (voucher only)`);
+      return { ok: true, voucher_code: voucherCode, ssid: config.ssid, method: "screen-only", duration_minutes: durationMinutes, valid_until: validUntil };
+    }
+
     const receiptData = await buildReceipt({
       ssid: config.ssid,
       code: voucherCode,
@@ -159,7 +165,6 @@ async function handlePrintJob(opts?: {
       validUntil,
     });
 
-    // 3. Print
     const { method } = await print(config.printer, receiptData);
     console.log(`[print] Printed via ${method}`);
 
@@ -249,6 +254,7 @@ const server = Bun.serve({
         receiptId: body.receipt_id as string,
         note: body.note as string,
         noExpire: body.no_expire === true,
+        skipPrint: body.skip_print === true,
       });
 
       return json(result, result.ok ? 200 : 500);
