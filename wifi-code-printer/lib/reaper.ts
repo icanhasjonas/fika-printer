@@ -11,11 +11,11 @@ import {
   terminateGuest,
   unauthorizeGuest,
   deleteVoucher,
-  listRadiusAccounts,
   deleteRadiusAccount,
   type UnifiConfig,
   type Voucher,
 } from "./unifi";
+import { getExpiredUsers, removeManagedUser } from "./user-store";
 import { parseClosingNote } from "./hours";
 
 export interface ReaperConfig {
@@ -79,26 +79,16 @@ export class Reaper {
     }
   }
 
-  private async sweepRadiusAccounts(now: Date): Promise<void> {
-    try {
-      const accounts = await listRadiusAccounts(this.config.unifi);
-      const expired = accounts.filter((a) => {
-        if (!a.note?.includes("fika:managed")) return false;
-        const match = a.note.match(/fika:expires:(\d{4}-\d{2}-\d{2})/);
-        if (!match) return false;
-        return new Date(match[1]) < now;
-      });
-
-      for (const account of expired) {
-        try {
-          await deleteRadiusAccount(this.config.unifi, account._id);
-          console.log(`[reaper] Deleted expired RADIUS account: ${account.name}`);
-        } catch (err) {
-          console.error(`[reaper] Failed to delete RADIUS account ${account.name}: ${err instanceof Error ? err.message : err}`);
-        }
+  private async sweepRadiusAccounts(_now: Date): Promise<void> {
+    const expired = getExpiredUsers();
+    for (const user of expired) {
+      try {
+        await deleteRadiusAccount(this.config.unifi, user.id);
+        removeManagedUser(user.id);
+        console.log(`[reaper] Deleted expired RADIUS account: ${user.name} (expired: ${user.expires})`);
+      } catch (err) {
+        console.error(`[reaper] Failed to delete RADIUS account ${user.name}: ${err instanceof Error ? err.message : err}`);
       }
-    } catch {
-      // RADIUS not configured or not available -- skip silently
     }
   }
 

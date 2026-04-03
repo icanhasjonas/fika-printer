@@ -7,7 +7,7 @@
  */
 
 import { print, getStatus, type PrinterConfig } from "./lib/printer";
-import { createVoucher, listRadiusAccounts, createRadiusAccount, updateRadiusAccount, deleteRadiusAccount, listGuests, type UnifiConfig } from "./lib/unifi";
+import { createVoucher, createRadiusAccount, deleteRadiusAccount, type UnifiConfig } from "./lib/unifi";
 import { buildReceipt, buildTestReceipt, buildMessageReceipt } from "./lib/receipt";
 import { Bridge, type PrintJob } from "./lib/bridge";
 import { renderDashboard } from "./lib/dashboard";
@@ -17,6 +17,7 @@ import { renderDiagPage } from "./lib/diag";
 import { sendPrinterCommand } from "./lib/printer-commands";
 import { renderMessagePage } from "./lib/message-page";
 import { renderUsersPage } from "./lib/users-page";
+import { listManagedUsers, addManagedUser, removeManagedUser, renewManagedUser, getExpiredUsers } from "./lib/user-store";
 
 const DRY_RUN = process.env.DRY_RUN === "1" || process.env.DRY_RUN === "true";
 
@@ -360,14 +361,8 @@ const server = Bun.serve({
       const action = url.pathname.replace("/users/api/", "");
 
       if (action === "list") {
-        const all = await listRadiusAccounts(config.unifi);
-        const managed = all.filter((a) => a.note?.includes("fika:managed"));
+        const managed = listManagedUsers();
         return json({ ok: true, accounts: managed });
-      }
-
-      if (action === "guests") {
-        const g = await listGuests(config.unifi);
-        return json({ ok: true, guests: g });
       }
 
       if (action === "create" && method === "POST") {
@@ -378,15 +373,15 @@ const server = Bun.serve({
         if (!name || !password) return json({ ok: false, error: "name and password required" }, 400);
 
         const days = Number(body.expiry_days) || 0;
-        const expiry = days > 0
+        const expires = days > 0
           ? new Date(Date.now() + days * 86400000).toISOString().slice(0, 10)
           : null;
-        const note = `fika:managed${expiry ? ` fika:expires:${expiry}` : ""}`;
 
         try {
-          const account = await createRadiusAccount(config.unifi, name, password, note);
-          console.log(`[users] Created ${name} (expires: ${expiry ?? "never"})`);
-          return json({ ok: true, account });
+          const account = await createRadiusAccount(config.unifi, name, password);
+          addManagedUser({ id: account._id, name, created: new Date().toISOString().slice(0, 10), expires });
+          console.log(`[users] Created ${name} (expires: ${expires ?? "never"})`);
+          return json({ ok: true, account: { ...account, expires } });
         } catch (err) {
           return json({ ok: false, error: String(err) }, 500);
         }
@@ -399,6 +394,7 @@ const server = Bun.serve({
         if (!id) return json({ ok: false, error: "id required" }, 400);
         try {
           await deleteRadiusAccount(config.unifi, id);
+          removeManagedUser(id);
           console.log(`[users] Deleted account ${id}`);
           return json({ ok: true });
         } catch (err) {
@@ -412,14 +408,10 @@ const server = Bun.serve({
         const id = body.id as string;
         const days = Number(body.days) || 30;
         if (!id) return json({ ok: false, error: "id required" }, 400);
-        const expiry = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
-        try {
-          await updateRadiusAccount(config.unifi, id, { note: `fika:managed fika:expires:${expiry}` });
-          console.log(`[users] Renewed ${id} until ${expiry}`);
-          return json({ ok: true, expiry });
-        } catch (err) {
-          return json({ ok: false, error: String(err) }, 500);
-        }
+        const expires = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+        renewManagedUser(id, expires);
+        console.log(`[users] Renewed ${id} until ${expires}`);
+        return json({ ok: true, expires });
       }
 
       if (action === "print" && method === "POST") {

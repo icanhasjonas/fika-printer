@@ -151,32 +151,18 @@ function generatePassword() {
 
 async function loadUsers() {
   try {
-    const [ur, gr] = await Promise.all([
-      fetch('/users/api/list').then(r => r.json()),
-      fetch('/users/api/guests').then(r => r.json()),
-    ]);
-    users = ur.accounts || [];
-    guests = gr.guests || [];
+    const resp = await fetch('/users/api/list');
+    const data = await resp.json();
+    users = data.accounts || [];
     renderUsers();
   } catch (err) {
     document.getElementById('userList').innerHTML = '<div class="empty">Failed to load: ' + esc(err.message) + '</div>';
   }
 }
 
-function getExpiry(note) {
-  if (!note) return null;
-  const m = note.match(/fika:expires:(\\d{4}-\\d{2}-\\d{2})/);
-  return m ? m[1] : null;
-}
-
-function isExpired(note) {
-  const exp = getExpiry(note);
-  if (!exp) return false;
-  return new Date(exp) < new Date();
-}
-
-function getDevices(username) {
-  return guests.filter(g => g.name === username || (g.authorized_by === 'radius' && g._id));
+function isExpired(u) {
+  if (!u.expires) return false;
+  return new Date(u.expires) < new Date();
 }
 
 function renderUsers() {
@@ -187,12 +173,7 @@ function renderUsers() {
   }
 
   list.innerHTML = users.map(u => {
-    const exp = getExpiry(u.note);
-    const expired = isExpired(u.note);
-    const devices = guests.filter(g =>
-      g.authorized_by === 'radius' &&
-      !g.expired
-    );
+    const expired = isExpired(u);
 
     return '<div class="user-card">' +
       '<div class="user-header">' +
@@ -200,34 +181,20 @@ function renderUsers() {
           '<span class="user-name">' + esc(u.name) + '</span> ' +
           (expired ? '<span class="badge expired">expired</span>' : '<span class="badge active">active</span>') +
         '</span>' +
-        '<span class="user-pass" onclick="copyPass(this)" title="Click to copy" data-pass="' + esc(u.x_password) + '">****</span>' +
       '</div>' +
       '<div class="user-meta">' +
-        (exp ? 'Expires: ' + exp : 'No expiration') +
+        'Created: ' + u.created +
+        (u.expires ? ' - Expires: ' + u.expires : ' - No expiration') +
       '</div>' +
       '<div class="user-actions">' +
-        '<button class="btn sm" onclick="showPass(this.parentElement.parentElement)">Show pass</button>' +
-        '<button class="btn sm" onclick="printCard(\'' + esc(u.name) + '\', \'' + esc(u.x_password) + '\', \'' + (exp || '') + '\')">Print card</button>' +
+        '<button class="btn sm" onclick="printCard(\'' + esc(u.name) + '\', \'' + (u.expires || '') + '\')">Print card</button>' +
         (expired
-          ? '<button class="btn sm" onclick="renewUser(\'' + u._id + '\')">Renew 30d</button>'
+          ? '<button class="btn sm" onclick="renewUser(\'' + u.id + '\')">Renew 30d</button>'
           : '') +
-        '<button class="btn sm danger" onclick="deleteUser(\'' + u._id + '\', \'' + esc(u.name) + '\')">Delete</button>' +
+        '<button class="btn sm danger" onclick="deleteUser(\'' + u.id + '\', \'' + esc(u.name) + '\')">Delete</button>' +
       '</div>' +
     '</div>';
   }).join('');
-}
-
-function showPass(card) {
-  const passEl = card.querySelector('.user-pass');
-  if (passEl.textContent === '****') {
-    passEl.textContent = passEl.dataset.pass;
-  } else {
-    passEl.textContent = '****';
-  }
-}
-
-function copyPass(el) {
-  navigator.clipboard.writeText(el.dataset.pass).then(() => toast('Password copied', true));
 }
 
 async function createUser() {
@@ -245,6 +212,7 @@ async function createUser() {
     const data = await resp.json();
     if (data.ok) {
       toast('Created ' + name + ' / ' + pass, true);
+      lastCreatedPass = pass;
       document.getElementById('newName').value = '';
       document.getElementById('newPass').value = '';
       loadUsers();
@@ -253,6 +221,8 @@ async function createUser() {
     }
   } catch (err) { toast('Failed: ' + err.message, false); }
 }
+
+let lastCreatedPass = '';
 
 async function deleteUser(id, name) {
   if (!confirm('Delete user ' + name + '?')) return;
@@ -281,7 +251,9 @@ async function renewUser(id) {
   } catch (err) { toast('Failed: ' + err.message, false); }
 }
 
-async function printCard(name, pass, expiry) {
+async function printCard(name, expiry) {
+  const pass = prompt('Enter password for ' + name + ' (not stored locally):');
+  if (!pass) return;
   try {
     const resp = await fetch('/users/api/print', {
       method: 'POST',

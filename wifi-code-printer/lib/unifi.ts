@@ -166,8 +166,8 @@ export async function listRadiusAccounts(config: UnifiConfig): Promise<RadiusAcc
   return (await unifiRequest(config, "/rest/account")) as RadiusAccount[];
 }
 
-export async function createRadiusAccount(config: UnifiConfig, name: string, password: string, note?: string): Promise<RadiusAccount> {
-  const data = (await unifiRequest(config, "/rest/account", { name, x_password: password, note: note ?? "" })) as RadiusAccount[];
+export async function createRadiusAccount(config: UnifiConfig, name: string, password: string): Promise<RadiusAccount> {
+  const data = (await unifiRequest(config, "/rest/account", { name, x_password: password })) as RadiusAccount[];
   if (!data?.[0]) throw new Error("Failed to create RADIUS account");
   return data[0];
 }
