@@ -32,13 +32,14 @@ graph LR
 
 **Other ways to trigger:**
 - **Web dashboard** - tap a preset button (30min / 2h / 12h)
-- **Custom form** - any duration, device count, batch printing
+- **Custom form** - any duration, device count, batch printing, optional print
 - **Message printer** - general purpose announcements and notices
 - **API** - `POST /print` with duration and device count
 
 ## Features
 
 - **Auto-expire at closing time** - voucher notes stamped with closing time metadata, reaper terminates guest sessions after hours
+- **RADIUS user management** - long-term WiFi accounts (monthly/yearly) with expiration, managed via web UI at `/users`
 - **Batch printing** - print multiple vouchers at once for events
 - **Message printer** - custom receipts for announcements, order-ready notices, daily specials
 - **Printer diagnostics** - web UI for buzzer control, density, width, status checks
@@ -94,8 +95,9 @@ Bun server running as a Home Assistant add-on.
 - Creates UniFi guest vouchers via `X-API-KEY` auth
 - Builds ESC/POS receipts with raster logo bitmap + native QR code
 - Prints via TCP:9100 to any ESC/POS thermal printer
-- **Voucher reaper** - terminates guest sessions at closing time
+- **Voucher reaper** - terminates guest sessions at closing time, cleans up expired RADIUS accounts
 - **Web dashboard** (`/`) - preset buttons + custom voucher generation
+- **User management** (`/users`) - RADIUS account CRUD for long-term WiFi members
 - **Message printer** (`/message`) - custom announcements and notices
 - **Diagnostics** (`/diag`) - buzzer, density, width, printer status
 

@@ -7,7 +7,7 @@
  */
 
 import { print, getStatus, type PrinterConfig } from "./lib/printer";
-import { createVoucher, type UnifiConfig } from "./lib/unifi";
+import { createVoucher, listRadiusAccounts, createRadiusAccount, updateRadiusAccount, deleteRadiusAccount, listGuests, type UnifiConfig } from "./lib/unifi";
 import { buildReceipt, buildTestReceipt, buildMessageReceipt } from "./lib/receipt";
 import { Bridge, type PrintJob } from "./lib/bridge";
 import { renderDashboard } from "./lib/dashboard";
@@ -16,6 +16,7 @@ import { Reaper } from "./lib/reaper";
 import { renderDiagPage } from "./lib/diag";
 import { sendPrinterCommand } from "./lib/printer-commands";
 import { renderMessagePage } from "./lib/message-page";
+import { renderUsersPage } from "./lib/users-page";
 
 const DRY_RUN = process.env.DRY_RUN === "1" || process.env.DRY_RUN === "true";
 
@@ -347,6 +348,104 @@ const server = Bun.serve({
       }
     }
 
+    // GET /users - RADIUS user management
+    if (url.pathname === "/users" && method === "GET") {
+      return new Response(renderUsersPage(), {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    }
+
+    // /users/api/* - RADIUS user CRUD
+    if (url.pathname.startsWith("/users/api/")) {
+      const action = url.pathname.replace("/users/api/", "");
+
+      if (action === "list") {
+        const all = await listRadiusAccounts(config.unifi);
+        const managed = all.filter((a) => a.note?.includes("fika:managed"));
+        return json({ ok: true, accounts: managed });
+      }
+
+      if (action === "guests") {
+        const g = await listGuests(config.unifi);
+        return json({ ok: true, guests: g });
+      }
+
+      if (action === "create" && method === "POST") {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch {}
+        const name = (body.name as string)?.trim();
+        const password = (body.password as string)?.trim();
+        if (!name || !password) return json({ ok: false, error: "name and password required" }, 400);
+
+        const days = Number(body.expiry_days) || 0;
+        const expiry = days > 0
+          ? new Date(Date.now() + days * 86400000).toISOString().slice(0, 10)
+          : null;
+        const note = `fika:managed${expiry ? ` fika:expires:${expiry}` : ""}`;
+
+        try {
+          const account = await createRadiusAccount(config.unifi, name, password, note);
+          console.log(`[users] Created ${name} (expires: ${expiry ?? "never"})`);
+          return json({ ok: true, account });
+        } catch (err) {
+          return json({ ok: false, error: String(err) }, 500);
+        }
+      }
+
+      if (action === "delete" && method === "POST") {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch {}
+        const id = body.id as string;
+        if (!id) return json({ ok: false, error: "id required" }, 400);
+        try {
+          await deleteRadiusAccount(config.unifi, id);
+          console.log(`[users] Deleted account ${id}`);
+          return json({ ok: true });
+        } catch (err) {
+          return json({ ok: false, error: String(err) }, 500);
+        }
+      }
+
+      if (action === "renew" && method === "POST") {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch {}
+        const id = body.id as string;
+        const days = Number(body.days) || 30;
+        if (!id) return json({ ok: false, error: "id required" }, 400);
+        const expiry = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+        try {
+          await updateRadiusAccount(config.unifi, id, { note: `fika:managed fika:expires:${expiry}` });
+          console.log(`[users] Renewed ${id} until ${expiry}`);
+          return json({ ok: true, expiry });
+        } catch (err) {
+          return json({ ok: false, error: String(err) }, 500);
+        }
+      }
+
+      if (action === "print" && method === "POST") {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch {}
+        const name = (body.name as string)?.trim();
+        const password = (body.password as string)?.trim();
+        if (!name || !password) return json({ ok: false, error: "name and password required" }, 400);
+
+        try {
+          const data = await buildMessageReceipt({
+            subject: "WIFI LOGIN",
+            message: `Username: ${name}\nPassword: ${password}${body.expiry ? `\nValid until: ${body.expiry}` : ""}`,
+            footer: config.ssid.toUpperCase(),
+            includeLogo: true,
+          });
+          const { method: printMethod } = await print(config.printer, data);
+          return json({ ok: true, method: printMethod });
+        } catch (err) {
+          return json({ ok: false, error: String(err) }, 500);
+        }
+      }
+
+      return json({ error: "unknown action" }, 404);
+    }
+
     // GET /diag - Printer diagnostics page
     if (url.pathname === "/diag" && method === "GET") {
       return new Response(renderDiagPage(`${config.printer.host}:${config.printer.tcpPort}`), {
@@ -390,6 +489,7 @@ console.log(`
 ┃  GET  /       - Web UI (generate codes!)       ┃
 ┃  POST /print  - Generate voucher + print       ┃
 ┃  POST /test   - Print test receipt             ┃
+┃  GET  /users   - WiFi user management           ┃
 ┃  GET  /message - Custom message printer        ┃
 ┃  GET  /diag   - Printer diagnostics             ┃
 ┃  GET  /status - Printer + bridge status        ┃

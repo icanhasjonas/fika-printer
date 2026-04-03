@@ -147,6 +147,54 @@ export async function unauthorizeGuest(config: UnifiConfig, mac: string): Promis
   });
 }
 
+// ============================================================
+// RADIUS Accounts
+// ============================================================
+
+export interface RadiusAccount {
+  _id: string;
+  name: string;
+  x_password: string;
+  site_id?: string;
+  note?: string;
+  vlan?: string;
+  tunnel_type?: number;
+  tunnel_medium_type?: number;
+}
+
+export async function listRadiusAccounts(config: UnifiConfig): Promise<RadiusAccount[]> {
+  return (await unifiRequest(config, "/rest/account")) as RadiusAccount[];
+}
+
+export async function createRadiusAccount(config: UnifiConfig, name: string, password: string, note?: string): Promise<RadiusAccount> {
+  const data = (await unifiRequest(config, "/rest/account", { name, x_password: password, note: note ?? "" })) as RadiusAccount[];
+  if (!data?.[0]) throw new Error("Failed to create RADIUS account");
+  return data[0];
+}
+
+export async function updateRadiusAccount(config: UnifiConfig, id: string, updates: Partial<{ name: string; x_password: string; note: string }>): Promise<void> {
+  const url = `${config.host}/proxy/network/api/s/${config.site}/rest/account/${id}`;
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { "X-API-KEY": config.apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+    // @ts-ignore
+    tls: { rejectUnauthorized: false },
+  });
+  if (!res.ok) throw new Error(`UniFi API ${res.status}: ${await res.text()}`);
+}
+
+export async function deleteRadiusAccount(config: UnifiConfig, id: string): Promise<void> {
+  const url = `${config.host}/proxy/network/api/s/${config.site}/rest/account/${id}`;
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: { "X-API-KEY": config.apiKey },
+    // @ts-ignore
+    tls: { rejectUnauthorized: false },
+  });
+  if (!res.ok) throw new Error(`UniFi API ${res.status}: ${await res.text()}`);
+}
+
 /**
  * Format raw voucher code with dash (XXXXX-XXXXX)
  */

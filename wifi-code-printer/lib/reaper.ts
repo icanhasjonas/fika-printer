@@ -11,6 +11,8 @@ import {
   terminateGuest,
   unauthorizeGuest,
   deleteVoucher,
+  listRadiusAccounts,
+  deleteRadiusAccount,
   type UnifiConfig,
   type Voucher,
 } from "./unifi";
@@ -62,18 +64,41 @@ export class Reaper {
         return closes !== null && now.getTime() >= closes.getTime() + graceMs;
       });
 
-      if (expired.length === 0) return;
-
-      console.log(`[reaper] Found ${expired.length} voucher(s) past closing time`);
-
-      // Load guest sessions once
-      const guests = await listGuests(this.config.unifi);
-
-      for (const voucher of expired) {
-        await this.reapVoucher(voucher, guests);
+      if (expired.length > 0) {
+        console.log(`[reaper] Found ${expired.length} voucher(s) past closing time`);
+        const guests = await listGuests(this.config.unifi);
+        for (const voucher of expired) {
+          await this.reapVoucher(voucher, guests);
+        }
       }
+
+      // Also sweep expired RADIUS accounts (fika:managed with fika:expires:)
+      await this.sweepRadiusAccounts(now);
     } catch (err) {
       console.error(`[reaper] Sweep failed: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  private async sweepRadiusAccounts(now: Date): Promise<void> {
+    try {
+      const accounts = await listRadiusAccounts(this.config.unifi);
+      const expired = accounts.filter((a) => {
+        if (!a.note?.includes("fika:managed")) return false;
+        const match = a.note.match(/fika:expires:(\d{4}-\d{2}-\d{2})/);
+        if (!match) return false;
+        return new Date(match[1]) < now;
+      });
+
+      for (const account of expired) {
+        try {
+          await deleteRadiusAccount(this.config.unifi, account._id);
+          console.log(`[reaper] Deleted expired RADIUS account: ${account.name}`);
+        } catch (err) {
+          console.error(`[reaper] Failed to delete RADIUS account ${account.name}: ${err instanceof Error ? err.message : err}`);
+        }
+      }
+    } catch {
+      // RADIUS not configured or not available -- skip silently
     }
   }
 
