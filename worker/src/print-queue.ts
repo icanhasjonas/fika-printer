@@ -70,8 +70,8 @@ interface PrintJob {
 
 const CLAIM_TIMEOUT_MS = 120_000;  // 2 minutes
 const JOB_EXPIRY_MS = 12 * 60 * 60 * 1000;  // 12 hours
-const PING_INTERVAL_MS = 25_000;
-const PONG_TIMEOUT_MS = 10_000;
+const PING_INTERVAL_MS = 60_000;
+const PONG_TIMEOUT_MS = 30_000;
 
 // --- Durable Object ---
 
@@ -535,9 +535,9 @@ export class PrintQueue {
       this.wsSend(socket, { type: "ping" });
     }
 
-    // Re-arm if there are active jobs or connected clients
-    const activeQueue = await this.getQueue();
-    const hasWork = activeQueue.some((j) => j.status === "pending" || j.status === "claimed");
+    // Re-arm if there are active jobs or connected clients. Reuse the `queue`
+    // we already loaded above - a second getQueue() would re-fetch every job.
+    const hasWork = queue.some((j) => j.status === "pending" || j.status === "claimed");
     if (hasWork || clients.size > 0) {
       this.state.storage.setAlarm(Date.now() + PING_INTERVAL_MS);
     }
@@ -684,7 +684,8 @@ export class PrintQueue {
     const queue = ((await this.state.storage.get("job_queue")) as string[]) ?? [];
     queue.push(job.id);
 
-    // Rolling cap: evict oldest completed/failed/expired first, then oldest pending
+    // Rolling cap: only scan jobs when actually at capacity. Below cap, this
+    // is a no-op and we skip the expensive bulk-get over every queued job.
     while (queue.length > MAX_QUEUE_SIZE) {
       const jobs = await this.state.storage.get(queue.map((id) => `job:${id}`));
       const evictIdx = queue.findIndex((id) => {
