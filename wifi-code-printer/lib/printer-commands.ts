@@ -121,6 +121,6 @@ function sendTCP(host: string, port: number, data: Uint8Array): Promise<void> {
         error(_, err) { clearTimeout(timeout); reject(err); },
         close() { clearTimeout(timeout); resolve(); },
       },
-    });
+    }).catch((err) => { clearTimeout(timeout); reject(err); }); // connect failures reject here, not via socket.error
   });
 }

@@ -21,6 +21,11 @@ import { listManagedUsers, addManagedUser, removeManagedUser, renewManagedUser, 
 
 const DRY_RUN = process.env.DRY_RUN === "1" || process.env.DRY_RUN === "true";
 
+// Safety net: a stray rejection (e.g. printer offline) must never take down the web UI + bridge.
+// 2026-10-08 an unhandled ECONNREFUSED crash-looped the add-on until the watchdog gave up.
+process.on("unhandledRejection", (err) => console.error("[fatal-guard] unhandled rejection:", err));
+process.on("uncaughtException", (err) => console.error("[fatal-guard] uncaught exception:", err));
+
 // Load config from HA add-on options or environment
 function loadConfig() {
   // HA add-on stores options at /data/options.json

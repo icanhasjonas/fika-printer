@@ -49,6 +49,11 @@ export async function printViaTCP(config: PrinterConfig, data: Uint8Array): Prom
         },
         data() {},
       },
+      // Connect failures (ECONNREFUSED, EHOSTUNREACH) reject this promise; socket.error never fires.
+      // Unhandled, they crash the whole process.
+    }).catch((err) => {
+      clearTimeout(timeout);
+      reject(new Error(`[printer] TCP:${target} connection failed: ${err?.message ?? err} (${err?.code ?? "?"})`));
     });
   });
 }
@@ -157,6 +162,9 @@ export async function getStatus(config: PrinterConfig): Promise<PrinterStatus> {
           clearTimeout(timeout);
         },
       },
+    }).catch((err) => {
+      clearTimeout(timeout);
+      reject(new Error(`[printer] Status query failed - ${target}: ${err?.message ?? err} (${err?.code ?? "?"})`));
     });
   });
 }
