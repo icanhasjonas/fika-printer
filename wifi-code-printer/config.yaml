@@ -1,5 +1,5 @@
 name: "WiFi Code Printer"
-version: "0.5.4"
+version: "0.5.5"
 slug: wifi-code-printer
 description: "Generate WiFi vouchers and print receipts for FIKA Bakery"
 url: "https://brain.frst.dev/projects/wifi-code-printer/"
@@ -32,6 +32,7 @@ options:
   timezone: "Asia/Bangkok"
   reaper_interval_minutes: 5
   reaper_grace_minutes: 5
+  printer_keepalive_seconds: 30
   log_level: "info"
 schema:
   unifi_host: url
@@ -52,4 +53,5 @@ schema:
   timezone: str
   reaper_interval_minutes: int(1,60)?
   reaper_grace_minutes: int(0,60)?
+  printer_keepalive_seconds: int(0,600)?
   log_level: list(debug|info|warn|error)

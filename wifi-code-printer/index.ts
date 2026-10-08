@@ -13,6 +13,7 @@ import { Bridge, type PrintJob } from "./lib/bridge";
 import { renderDashboard } from "./lib/dashboard";
 import { getClosingTime, formatClosingNote, formatClosingDisplay, type HoursConfig } from "./lib/hours";
 import { Reaper } from "./lib/reaper";
+import { startPrinterKeepalive } from "./lib/keepalive";
 import { renderDiagPage } from "./lib/diag";
 import { sendPrinterCommand } from "./lib/printer-commands";
 import { renderMessagePage } from "./lib/message-page";
@@ -79,6 +80,7 @@ function loadConfig() {
     timezone: get("timezone", "TIMEZONE") || "Asia/Bangkok",
     reaperIntervalMinutes: getNum("reaper_interval_minutes", "REAPER_INTERVAL_MINUTES", 5),
     reaperGraceMinutes: getNum("reaper_grace_minutes", "REAPER_GRACE_MINUTES", 5),
+    printerKeepaliveSeconds: getNum("printer_keepalive_seconds", "PRINTER_KEEPALIVE_SECONDS", 30),
     port: getNum("", "PORT", 3000),
   };
 }
@@ -477,6 +479,13 @@ if (!DRY_RUN && config.unifi.host && config.unifi.apiKey) {
   reaper.start();
 } else {
   console.log("[reaper] Disabled (dry-run or no UniFi config)");
+}
+
+// --- Printer keep-alive (printer ignores broadcast ARP; see lib/keepalive.ts) ---
+
+if (!DRY_RUN && config.printerKeepaliveSeconds > 0) {
+  startPrinterKeepalive(() => getStatus(config.printer), config.printerKeepaliveSeconds * 1000);
+  console.log(`[keepalive] Checking printer every ${config.printerKeepaliveSeconds}s`);
 }
 
 console.log(`
